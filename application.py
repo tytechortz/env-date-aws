@@ -29,6 +29,8 @@ yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
 two_days_ago = datetime.strftime(datetime.now() - timedelta(2), '%Y-%m-%d')
 
 app = dash.Dash()
+application = app.server
+
 
 app.config.suppress_callback_exceptions = True
 
