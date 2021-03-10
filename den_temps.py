@@ -1,10 +1,10 @@
 import dash
 import dash_html_components as html
 import dash_core_components as dcc
-from connect import norm_records, rec_lows, rec_highs, all_temps
+# from connect import norm_records, rec_lows, rec_highs, all_temps
 from datetime import datetime, date, timedelta
 import time
-from connect import all_temps
+# from connect import all_temps
 import pandas as pd
 
 app = dash.Dash(__name__)
@@ -15,20 +15,29 @@ today = time.strftime("%Y-%m-%d")
 startyr = 1950
 year_count = current_year-startyr
 
-df_all_temps = pd.DataFrame(all_temps,columns=['dow','sta','Date','TMAX','TMIN'])
+# df_all_temps = pd.DataFrame(all_temps,columns=['dow','sta','Date','TMAX','TMIN'])
 
 # print(df_all_temps)
 
-# df_all_temps = pd.read_csv('https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&dataTypes=TMAX,TMIN&stations=USW00023062&startDate=1950-01-01&endDate=2020-06-05&units=standard')
+df_all_temps = pd.read_csv('https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&dataTypes=TMAX,TMIN&stations=USW00023062&startDate=1950-01-01&endDate=2021-03-10&units=standard')
 
-last_day = df_all_temps.iloc[-1, 2] + timedelta(days=1)
+df_all_temps['DATE'] = pd.to_datetime(df_all_temps['DATE'])
+df_all_temps = df_all_temps.set_index('DATE')
+
+daily_highs = df_all_temps.resample('D').max()
+df_rec_highs = daily_highs.groupby([daily_highs.index.month, daily_highs.index.day]).max()
+
+high_idx = df_rec_highs.index.get_level_values(0).astype(str) + '-' + df_rec_highs.index.get_level_values(1).astype(str)
+df_rec_highs.index = high_idx
+
+last_day = df_all_temps.index[-1]
 ld = last_day.strftime("%Y-%m-%d")
 
-df_norms = pd.DataFrame(norm_records)
 
-df_rec_lows = pd.DataFrame(rec_lows)
-
-df_rec_highs = pd.DataFrame(rec_highs)
+daily_lows = df_all_temps.resample('D').min()
+df_rec_lows = daily_lows.groupby([daily_lows.index.month, daily_lows.index.day]).min()
+low_idx = df_rec_lows.index.get_level_values(0).astype(str) + '-' + df_rec_lows.index.get_level_values(1).astype(str)
+df_rec_lows.index = low_idx
 
 
 
