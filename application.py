@@ -5,8 +5,7 @@ import dash_table as dt
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output, State
 from homepage import Homepage
-from den_temps import temp_App, df_all_temps, current_year, df_norms, df_rec_lows, df_rec_highs, year_count, today
-# from den_temps import temp_App, df_all_temps, annual_maxs,annual_mins, year_count, df_norms, current_year
+from den_temps import temp_App, df_all_temps, current_year, ld, df_norms, df_rec_lows, df_rec_highs, year_count, today, last_day
 from ice import ice_App, sea_options, df, year_options, value_range, month_options
 from colorado_river import river_App, capacities
 from co_2 import co2_App
@@ -21,12 +20,15 @@ import time
 import csv 
 import requests
 
+pd.set_option('display.max_rows', None)
 
+pd.set_option('display.max_rows', None)
 
 today = time.strftime("%Y-%m-%d")
+yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
+two_days_ago = datetime.strftime(datetime.now() - timedelta(2), '%Y-%m-%d')
 
 app = dash.Dash()
-application = app.server
 
 app.config.suppress_callback_exceptions = True
 
@@ -50,17 +52,267 @@ def display_page(pathname):
         return Homepage()
 
 
-# CO2 callbacks #############################################################
+# CO2 callbacks ########################################
 
-# @app.callback(
-#     Output('co2-levels', 'figure'),
-#     [Input('co2-data', 'children')])
-# def lake_graph(data):
-#     return print(data)
+@app.callback(
+    Output('co2-levels', 'figure'),
+    [Input('CO2-data', 'children'),
+    Input('interval-component', 'n_intervals')])
+def co2_graph(co2_data, n):
+    df = pd.read_json(co2_data)
+
+    data = [
+        go.Scatter(
+            y = df['value'],
+            x = df.index,
+            mode = 'markers'
+        )
+    ]
+    layout = go.Layout(
+        height=500
+    )
+
+    return {'data': data, 'layout': layout}
+
+@app.callback(
+    Output('max-co2-layout', 'children'),
+    [Input('CO2-data', 'children'),
+    Input('interval-component', 'n_intervals')])
+def max_co2_stats(co2_data, n):
+    df = pd.read_json(co2_data)
+    max_co2 = df['value'].max()
+    max_co2_date = df['value'].idxmax().strftime('%Y-%m-%d')
+
+    return html.Div([
+        html.Div([
+            html.Div('Maximum CO2 Value (ppm)', style={'text-align':'center'}) 
+        ],
+            className='round1'
+        ),
+        html.Div([
+            html.Div('{}'.format(max_co2), style={'text-align':'center'}),
+            html.Div('{}'.format(max_co2_date), style={'text-align':'center'}) 
+        ],
+            className='round1'
+        ),
+    ])
+
+@app.callback(
+    Output('avg-co2-layout', 'children'),
+    [Input('CO2-data', 'children'),
+    Input('interval-component', 'n_intervals')])
+def avg_co2_stats(co2_data, n):
+    df = pd.read_json(co2_data)
+    monthly_avg = df.groupby([df.index.year, df.index.month]).mean()
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    this_month_avg = monthly_avg.loc[current_year, current_month].value
+    last_year_avg = monthly_avg.loc[current_year-1, current_month].value
+
+    return html.Div([
+        html.Div([
+            html.Div('Avg For Month (ppm)', style={'text-align':'center'}),
+            html.Div('{:.2f}'.format(this_month_avg), style={'text-align':'center'}), 
+            html.Div('Last Year', style={'text-align':'center'}),
+            html.Div('{:.2f}'.format(last_year_avg), style={'text-align':'center'}), 
+        ],
+            className='round1'
+        ),
+    ])
+
+@app.callback(
+    Output('current-co2-layout', 'children'),
+    [Input('CO2-data', 'children')])
+def current_co2_stats(co2_data):
+    df = pd.read_json(co2_data)
+    current_co2 = df.loc[yesterday]
+    if current_co2.empty:
+        current_co2 = df.loc[two_days_ago]
+   
+    current_co2_value = current_co2.iloc[-1]
+    
+    current_co2_date = current_co2.name.strftime('%Y-%m-%d')
+  
+    return html.Div([
+        html.Div([
+            html.Div('Current CO2 Value (ppm)', style={'text-align':'center'}) 
+        ],
+            className='round1'
+        ),
+        html.Div([
+            html.Div('{}'.format(current_co2_value), style={'text-align':'center'}),
+            html.Div('{}'.format(current_co2_date), style={'text-align':'center'}) 
+        ],
+            className='round1'
+        ),
+    ])
+
+@app.callback(
+    Output('CO2-data', 'children'),
+    [Input('interval-component', 'n_intervals')])
+def co2_graph(n):
+    old_data = pd.read_csv('ftp://aftp.cmdl.noaa.gov/data/trace_gases/co2/in-situ/surface/mlo/co2_mlo_surface-insitu_1_ccgg_DailyData.txt', delim_whitespace=True, header=[151])
+
+    old_data = old_data.drop(['hour', 'longitude', 'latitude', 'elevation', 'intake_height', 'qcflag', 'nvalue', 'altitude', 'minute', 'second', 'site_code', 'value_std_dev'], axis=1)
+
+
+    old_data = old_data.iloc[501:]
+
+    old_data.index = pd.to_datetime(old_data[['year', 'month', 'day']])
+    old_data = old_data.drop(['year', 'month', 'day'], axis=1)
+    
+
+    new_data = pd.read_csv('https://www.esrl.noaa.gov/gmd/webdata/ccgg/trends/co2_mlo_weekly.csv')
+    new_data['Date'] = pd.to_datetime(new_data['Date'])
+    new_data.index = new_data['Date']
+    new_data = new_data.drop(['month', 'week', 'Date'], axis=1)
+
+    new_data['value'] = new_data['day']
+    new_data = new_data.drop(['day'], axis=1)
+    new_data = new_data[datetime(2020, 1, 1):]
+    
+   
+    frames = [old_data, new_data]
+    co2_data = pd.concat(frames)
+    co2_data['value'] = co2_data['value'].replace(-999.99, np.nan)
+   
+    max_co2 = co2_data['value'].max()
+   
+    max_co2_date = co2_data['value'].idxmax().strftime('%Y-%m-%d')
+    
+    current_co2 = co2_data['value'].iloc[-1]
+    
+    current_co2_date = co2_data.index[-1].strftime('%Y-%m-%d')
+    
+    monthly_avg = co2_data.groupby([co2_data.index.year, co2_data.index.month]).mean()
+
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    this_month_avg = monthly_avg.loc[current_year, current_month].value
+    last_year_avg = monthly_avg.loc[current_year-1, current_month].value
+   
+    return co2_data.to_json()
     
 
 
-# Colorado River storage callbacks  #############################################
+# Colorado River storage callbacks ###########################
+
+@app.callback(
+    Output('lake-annual-min-table', 'children'),
+    [Input('lake', 'value')])
+def display_annual_min_table(value):
+    if value:
+        
+        return dt.DataTable(id='water-datatable-interactivity',
+        data=[{}],
+        columns=[{}],
+        fixed_rows={'headers': True, 'data': 0},
+        style_cell_conditional=[
+            {'if': {'column_id': 'Date'},
+            'width':'100px'},
+            {'if': {'column_id': 'Value'},
+            'width':'100px'},
+        ],
+        style_data_conditional=[
+            {
+            'if': {'row_index': 'odd'},
+            'backgroundColor': 'rgb(248, 248, 248)'
+            },
+        ],
+        style_header={
+        'backgroundColor': 'rgb(230, 230, 230)',
+        'fontWeight': 'bold'
+        },
+      
+        sort_action="native",
+        sort_mode="multi",
+        column_selectable="single",
+        selected_columns=[],
+        selected_rows=[],
+       
+        page_current= 0,
+        page_size= 10,
+        )
+
+@app.callback([
+    Output('water-datatable-interactivity', 'data'),
+    Output('water-datatable-interactivity', 'columns'),
+    Output('d-min', 'children')],
+    [Input('powell-water-data', 'children'),
+    Input('mead-water-data', 'children'),
+    Input('combo-water-data', 'children'),
+    Input('lake', 'value')])
+def display_annual_table(powell_data, mead_data, combo_data, lake):
+    powell_dr = pd.read_json(powell_data)
+    mead_dr = pd.read_json(mead_data)
+    combo_dr = pd.read_json(combo_data)
+   
+    if lake == 'lakepowell':
+        annual_min_all = powell_dr.loc[powell_dr.groupby(pd.Grouper(freq='Y')).idxmin().iloc[:, 0]]
+       
+        annual_min_all = annual_min_all.iloc[37:]
+    
+        dr = annual_min_all
+     
+        dr = dr.sort_values('Value')
+       
+        dr = dr.drop(['Site', 'power level'], 1)
+      
+        dr = dr.reset_index()
+        dr = dr.rename(columns={dr.columns[0]: "Date"})
+        dr['Date'] = dr['Date'].dt.strftime('%Y-%m-%d')
+
+        dr['Diff'] = dr['Value'] - dr['Value'].shift(1)
+
+        columns=[
+            {"name": i, "id": i, "selectable": True} for i in dr.columns
+        ]
+
+    elif lake == 'hdmlc':
+        annual_min_all = mead_dr.loc[mead_dr.groupby(pd.Grouper(freq='Y')).idxmin().iloc[:, 0]]
+        
+        annual_min_all = annual_min_all.iloc[37:]
+        dr = annual_min_all
+        dr = dr.sort_values('Value')
+        dr = dr.drop(['Site', '1090', '1075', '1050', '1025'], 1)
+
+        dr = dr.reset_index()
+        
+        dr = dr.rename(columns={dr.columns[0]: "Date"})
+        dr['Date'] = dr['Date'].dt.strftime('%Y-%m-%d')
+        dr['Diff'] = dr['Value'] - dr['Value'].shift(1)
+
+        columns=[
+            {"name": i, "id": i, "selectable": True} for i in dr.columns
+        ]
+  
+    else:
+        dr = combo_dr.drop(['Site_x', 'Value_x', 'Site_y', 'Value_y', '1090', '1075', '1050', '1025', 'power level'], 1)
+       
+        annual_min_all = dr.loc[dr.groupby(pd.Grouper(freq='Y')).idxmin().iloc[:, 0]]
+       
+        annual_min_all = annual_min_all.iloc[37:]
+
+        dr = annual_min_all
+
+        dr = dr.sort_values('Value')
+
+        dr = dr.reset_index()
+
+        dr = dr.rename(columns={dr.columns[0]: "Date"})
+
+        dr['Date'] = dr['Date'].dt.strftime('%Y-%m-%d')
+        dr['Diff'] = dr['Value'] - dr['Value'].shift(1)
+
+        columns=[
+            {"name": i, "id": i, "selectable": True} for i in dr.columns
+        ]
+    
+        
+    d_min = dr['Value'].min()
+     
+
+    return dr.to_dict('records'), columns, d_min 
 
 @app.callback(
     Output('water-stats', 'children'),
@@ -157,7 +409,6 @@ def produce_changes(lake, period, cv, last_v, combo_data, mead_data, powell_data
         current_volume = df['Value'][-1]
        
         past_data = df['Value'][-(int(period))]
-        
        
         change = current_volume - past_data
        
@@ -244,89 +495,14 @@ def produce_changes(lake, period, cv, last_v, combo_data, mead_data, powell_data
                 className='round1'
             ),
 
-
-# @app.callback(
-#     Output('changes', 'children'),
-#     [Input('lake', 'value'),
-#     Input('period', 'value'),
-#     Input('current-volume', 'children'),
-#     Input('last_v', 'children'),
-#     Input('selected-water-data', 'children')])
-# def produce_changes(lake, period, cv, last_v, data):
-#     df = pd.read_json(data)
-#     # print(last_v)
-#     # print(cv)
-#     # change = cv - last_v
-#     # print(change)
-#     if lake == 'combo':
-#         df = df.set_index('Date')
-#         data = df.sort_index()
-#         current_volume = data.iloc[-1,6]
-#         # current_volume = data['Value'][0]
-#         # print(current_volume)
-#         past_data = data.iloc[-(int(period)),6]
-#         # past_data = data['Value'][1]
-#         # print(past_data)
-#         change = current_volume - past_data
-#         annual_min = data.resample('Y').min()
-#         # print(annual_min)
-#         annual_min_twok = annual_min[(annual_min.index.year > 1999)]
-#         rec_low = annual_min_twok['Value'].min()
-#         dif_rl = data.iloc[-1,6] - rec_low
-
-#         return html.Div([
-#                 html.Div('Change', style={'text-align':'center'}),
-#                 html.Div('{:,.0f}'.format(change), style={'text-align':'center'}),
-#                 html.Div('Record Low', style={'text-align':'center'}),
-#                 html.Div('{:,.0f}'.format(rec_low), style={'text-align':'center'}),
-#                 html.Div('Difference', style={'text-align':'center'}),
-#                 html.Div('{:,.0f}'.format(dif_rl), style={'text-align':'center'}),
-#             ],
-#                 className='round1'
-#             ),
-
-#     elif lake == 'lakepowell' or 'hdmlc':
-#         df['Date'] = pd.to_datetime(df['Date'])
-#         df = df.set_index('Date')
-#         data = df.sort_index()
-#         # print(data)
-#         current_volume = data.iloc[-2,3]
-#         # current_volume = cv
-#         # print(current_volume)
-#         past_data = data.iloc[-(int(period)),3]
-#         # past_data = last_v
-#         # print(past_data)
-#         change = current_volume - past_data
-#         annual_min = data.resample('Y').min()
-#         # print(annual_min)
-#         annual_min_twok = annual_min[(annual_min.index.year > 1999)]
-#         rec_low = annual_min_twok['Value'].min()
-#         dif_rl = data.iloc[-2,3] - rec_low
-
-    
- 
-#     return html.Div([
-#                 html.Div('Change', style={'text-align':'center'}),
-#                 html.Div('{:,.0f}'.format(change), style={'text-align':'center'}),
-#                 html.Div('Record Low', style={'text-align':'center'}),
-#                 html.Div('{:,.0f}'.format(rec_low), style={'text-align':'center'}),
-#                 html.Div('Difference', style={'text-align':'center'}),
-#                 html.Div('{:,.0f}'.format(dif_rl), style={'text-align':'center'}),
-#             ],
-#                 className='round1'
-#             ),
-
 @app.callback([
     Output('powell-water-data', 'children'),
     Output('mead-water-data', 'children'),
     Output('combo-water-data', 'children')],
     [Input('lake', 'value')])
-def clean_data(lake):
-    # powell_data = 'https://water.usbr.gov/api/web/app.php/api/series?sites=lakepowell&parameters=Day.Inst.ReservoirStorage.af&start=1850-01-01&end=' + today + '&format=csv'
-
+def clean_powell_data(lake):
+    
     powell_data = 'https://data.usbr.gov/rise/api/result/download?type=csv&itemId=509&before=' + today + '&after=1963-06-28&filename=Lake%20Powell%20Glen%20Canyon%20Dam%20and%20Powerplant%20Daily%20Lake%2FReservoir%20Storage-af%20Time%20Series%20Data%20'
-
-    # mead_data = 'https://water.usbr.gov/api/web/app.php/api/series?sites=hdmlc&parameters=Day.Inst.ReservoirStorage.af&start=1850-01-01&end=' + today + '&format=csv'
 
     mead_data = 'https://data.usbr.gov/rise/api/result/download?type=csv&itemId=6124&before=' + today + '&after=1937-05-28&filename=Lake%20Mead%20Hoover%20Dam%20and%20Powerplant%20Daily%20Lake%2FReservoir%20Storage-af%20Time%20Series%20Data%20(1937-05-28%20-%202020-11-30)&order=ASC'
 
@@ -378,6 +554,10 @@ def clean_data(lake):
         
     mead_df = df_mead_water.drop(df_mead_water.index[0])
 
+    # print(mead_df.head())
+    # print(powell_df.head())
+
+           
     start_date = date(1963, 6, 29)
     date_now = date.today()
     delta = date_now - start_date
@@ -394,103 +574,10 @@ def clean_data(lake):
     df_total['Value'] = df_total['Value_x'] + df_total['Value_y']
     
     combo_df = df_total.drop(df_total.index[0])
-    # print(combo_df.tail())
+    # print(combo_df.head())
 
     return powell_df.to_json(), mead_df.to_json(), combo_df.to_json()
-
-        # with requests.Session() as s:
-        #     download = s.get(powell_data)
-
-        #     decoded_content = download.content.decode('utf-8')
-
-        #     cr = csv.reader(decoded_content.splitlines(), delimiter=',')
-
-        #     for i in range(4): next(crp)
-        #     df_powell_water = pd.DataFrame(crp)
-
-        #     # new_header = df_water.iloc[0]
-
-        #     df_water = df_water[1:]
-        #     df_water.columns = new_header
-        #     # print(df_water)
-        #     df_water['power level'] = 6124000
-        # # print(df_water)
-        # # chopped_df = df_water[df_water['Value'] != 0]
-        # chopped_df = df_water.drop(df_water.index[0])
-        # # print(chopped_df)
-        # return chopped_df.to_json()
-            
-
-    # elif lake == 'hdmlc':
-    #     with requests.Session() as s:
-    #         download = s.get(mead_data)
-
-    #         decoded_content = download.content.decode('utf-8')
-
-    #         cr = csv.reader(decoded_content.splitlines(), delimiter=',')
-
-    #         for i in range(4): next(cr)
-    #         df_water = pd.DataFrame(cr)
-    #         new_header = df_water.iloc[0]
-    #         df_water = df_water[1:]
-    #         df_water.columns = new_header
-    #         # print(df_water)
-    #         df_water['1090'] = 10857000
-    #         df_water['1075'] = 9601000
-    #         df_water['1050'] = 7683000
-    #         # df['1045'] = 7326000
-    #         # df['1040'] = 6978000
-    #         # df['1035'] = 6638000
-    #         # df['1030'] = 6305000
-    #         df_water['1025'] = 5981000
-    #     # print(df_water)
-    #     # chopped_df = df_water[df_water['Value'] != 0]
-    #     chopped_df = df_water.drop(df_water.index[0])
-    #     # print(chopped_df)
-    #     return chopped_df.to_json()
-
-    # elif lake == 'combo':
-    #     with requests.Session() as s:
-    #         p_download = s.get(powell_data)
-
-    #         p_decoded_content = p_download.content.decode('utf-8')
-
-    #         crp = csv.reader(p_decoded_content.splitlines(), delimiter=',')
-
-    #         for i in range(4): next(crp)
-    #         df_powell_water = pd.DataFrame(crp)
-    #         new_powell_header = df_powell_water.iloc[0]
-    #         df_powell_water = df_powell_water[1:]
-    #         df_powell_water.columns = new_powell_header
-
-    #     with requests.Session() as t:
-    #         m_download = t.get(mead_data)
-    #         m_decoded_content = m_download.content.decode('utf-8')
-    #         crm = csv.reader(m_decoded_content.splitlines(), delimiter=',')
-    #         for i in range(4): next(crm)
-    #         df_mead_water = pd.DataFrame(crm)
-    #         new_mead_header = df_mead_water.iloc[0]
-    #         df_mead_water = df_mead_water[1:]
-    #         df_mead_water.columns = new_mead_header
-
-
-    #     start_date = date(1963, 6, 29)
-    #     date_now = date.today()
-    #     delta = date_now - start_date
-    #     days = delta.days
-    #     df_mead_water = df_mead_water[:days]
-    #     df_total = pd.merge(df_mead_water, df_powell_water, how='inner', left_index=True, right_index=True)
     
-    #     df_total.rename(columns={'Date_x':'Date'}, inplace=True)
-     
-    #     df_total = df_total.drop(['Date_y', 'Parameter_x', 'Parameter_y', 'Units_x', 'Units_y'], axis=1)
-    #     df_total['Value_x'] = df_total['Value_x'].astype(int)
-    #     df_total['Value_y'] = df_total['Value_y'].astype(int)
-    #     df_total['Value'] = df_total['Value_x'] + df_total['Value_y']
-    #     # print(df_total)
-    #     # chopped_df = df_total[df_total['Value'] != 0]
-    #     chopped_df = df_total.drop(df_total.index[0])
-    #     return chopped_df.to_json()
 
 @app.callback(
     Output('lake-levels', 'figure'),
@@ -502,7 +589,6 @@ def lake_graph(lake, powell_data, mead_data, combo_data):
     powell_df = pd.read_json(powell_data)
     mead_df = pd.read_json(mead_data)
     combo_df = pd.read_json(combo_data)
-    print(powell_df.tail())
 
     traces = []
     if lake == 'hdmlc':
@@ -545,23 +631,26 @@ def lake_graph(lake, powell_data, mead_data, combo_data):
     return {'data': traces, 'layout': layout}
 
 
-# Temperature callbacks ################################################
-
+# Temperature callbacks ################################
 
 @app.callback(Output('all-data', 'children'),
             [Input('product', 'value')])
 def all_temps_cleaner(product_value):
+  
     cleaned_all_temps = df_all_temps
-    print(cleaned_all_temps)
+  
+    cleaned_all_temps.columns=['dow','sta','Date','TMAX','TMIN']
+    
+    cleaned_all_temps = cleaned_all_temps.drop(['dow','sta'], axis=1)
 
     return cleaned_all_temps.to_json()
 
 @app.callback(
     Output('date-picker', 'children'),
     [Input('product', 'value')])
-    # Input('year', 'value')])
+   
 def display_date_selector(product_value):
-    if product_value == 'climate-for-day':
+    if product_value == 'climate-for-day' or product_value == 'temp-annual-ranks':
         return  html.P('Select Date (MM-DD)'), dcc.DatePickerSingle(
                     id='date',
                     display_format='MM-DD',
@@ -577,7 +666,7 @@ def display_year_selector(product_value):
                     id = 'year',
                     type = 'number',
                     value = current_year,
-                    min = 1950, max = current_year
+                    min = 1950, max = current_year + 1
                 )
 
 @app.callback(
@@ -659,6 +748,7 @@ def max_stats(product, d_max_max, admaxh, d_min_max, d_min_min, adminl, d_max_mi
         ]),
       
 
+
 @app.callback([
     Output('datatable-interactivity', 'data'),
     Output('datatable-interactivity', 'columns'),
@@ -669,88 +759,107 @@ def max_stats(product, d_max_max, admaxh, d_min_max, d_min_min, adminl, d_max_mi
     Output('avg-of-dly-lows', 'children'),
     Output('d-max-min', 'children')],
     [Input('all-data', 'children'),
-    Input('date', 'date')])
-def display_climate_day_table(all_data, selected_date):
-    dr = pd.read_json(all_data)
-    # print(dr)
-    dr.index = pd.to_datetime(dr.index, unit='ms')
-    # print(type(dr.index))
-    # dr['Date'] = pd.to_datetime(dr['Date'], unit='ms')
-    # dr.set_index(['Date'], inplace=True)
-    dr = dr[(dr.index.month == int(selected_date[5:7])) & (dr.index.day == int(selected_date[8:10]))]
-    # dr = dr.reset_index()
-    
-    # dr.index = pd.to_datetime(dr.index, unit='ms')
-    # print(type(dr.index))
+    Input('norms', 'children'),
+    Input('date', 'date'),
+    Input('product','value')])
+def display_climate_day_table(all_data, norms, selected_date, value):
    
-    # print(dr)
+    dr = pd.read_json(all_data)
+    df_norms = pd.read_json(norms)
+ 
+    dr['Date'] = pd.to_datetime(dr['Date'], unit='ms')
 
-    dr = dr.drop('STATION', axis=1)
-    # dr["Date"] = dr.index
-    dr.index = pd.DatetimeIndex(dr.index).strftime("%Y-%m-%d")
-    # print(dr)
-    dr['DATE'] = pd.to_datetime(dr.index).strftime("%Y-%m-%d")
-    # print(dr)
+    if value == 'climate-for-day':
+        dr.set_index(['Date'], inplace=True)
+        dr = dr[(dr.index.month == int(selected_date[5:7])) & (dr.index.day == int(selected_date[8:10]))]
+        dr = dr.reset_index()
+        columns=[
+            {"name": i, "id": i, "selectable": True} for i in dr.columns
+        ]
+        
+        dr['Date'] = dr['Date'].dt.strftime('%Y-%m-%d')
+        d_max_max = dr['TMAX'].max()
+        avg_of_dly_highs = dr['TMAX'].mean()
+        d_min_max = dr['TMAX'].min()
+        d_min_min = dr['TMIN'].min()
+        avg_of_dly_lows = dr['TMIN'].mean()
+        d_max_min = dr['TMIN'].max()
 
-    # columns=[
-    #     {"name": i, "id": i,"selectable": True} for i in dr.columns
-    # ]
+        return dr.to_dict('records'), columns, d_max_max, avg_of_dly_highs, d_min_max, d_min_min, avg_of_dly_lows, d_max_min 
 
-    columns=[
-      {'name': 'DATE', 'id': 'DATE', 'selectable': True},
-      {'name': 'TMAX', 'id': 'TMAX', 'selectable': True},
-      {'name': 'TMIN', 'id': 'TMIN', 'selectable': True},
-    ]
-    
-    # dr['Date'] = dr.index.dt.strftime('%Y-%m-%d')
-    # dr.index = dr.index.strftime('%Y-%m-%d')
-    d_max_max = dr['TMAX'].max()
-    avg_of_dly_highs = dr['TMAX'].mean()
-    d_min_max = dr['TMAX'].min()
-    d_min_min = dr['TMIN'].min()
-    avg_of_dly_lows = dr['TMIN'].mean()
-    d_max_min = dr['TMIN'].max()
+    elif value == 'temp-annual-ranks':
+        dr['d'] = dr.Date.dt.day
+        dr['m'] = dr.Date.dt.month
 
-    return dr.to_dict('records'), columns, d_max_max, avg_of_dly_highs, d_min_max, d_min_min, avg_of_dly_lows, d_max_min  
+        
+        df_norms['date'] = pd.to_datetime(df_norms[2], unit='ms')
+        df_norms = df_norms.drop([1,2], axis=1)
+
+        df_norms['d'] = df_norms.date.dt.day
+        df_norms['m'] = df_norms.date.dt.month
+
+        temps = dr.merge(df_norms, 'inner', on=['m', 'd']).drop(['d', 'm', 'date'], axis=1)
+        temps.set_index('Date', inplace=True)
+        temps['dd'] = ((temps['TMAX'] - temps[3]) + (temps['TMIN'] - temps[4])) / 2
+        annual_temp_totals = temps.resample('Y').sum()['dd'].sort_values(ascending=False)
+        annual_temp_totals = annual_temp_totals.reset_index()
+        annual_temp_totals = pd.DataFrame(annual_temp_totals)
+       
+        annual_temp_totals['Date'] = annual_temp_totals['Date'].dt.strftime('%Y')
+        annual_temp_totals['dd'] = annual_temp_totals['dd'].astype(int)
+
+        columns=[
+            {"name": i, "id": i, "selectable": True} for i in annual_temp_totals.columns
+        ]
+
+        dr['Date'] = dr['Date'].dt.strftime('%Y-%m-%d')
+        d_max_max = dr['TMAX'].max()
+        avg_of_dly_highs = dr['TMAX'].mean()
+        d_min_max = dr['TMAX'].min()
+        d_min_min = dr['TMIN'].min()
+        avg_of_dly_lows = dr['TMIN'].mean()
+        d_max_min = dr['TMIN'].max()
+
+        return annual_temp_totals.to_dict('records'), columns, d_max_max, avg_of_dly_highs, d_min_max, d_min_min, avg_of_dly_lows, d_max_min
 
 @app.callback(
     Output('climate-day-table', 'children'),
     [Input('product', 'value')])
 def display_climate_table(value):
-    if value == 'climate-for-day':
-        return dt.DataTable(id='datatable-interactivity',
-        data=[{}], 
-        columns=[{}], 
-        fixed_rows={'headers': True, 'data': 0},
-        style_cell_conditional=[
-            {'if': {'column_id': 'Date'},
-            'width':'100px'},
-            {'if': {'column_id': 'TMAX'},
-            'width':'100px'},
-            {'if': {'column_id': 'TMIN'},
-            'width':'100px'},
-        ],
-        style_data_conditional=[
-            {
-            'if': {'row_index': 'odd'},
-            'backgroundColor': 'rgb(248, 248, 248)'
-            },
-        ],
-        style_header={
-        'backgroundColor': 'rgb(230, 230, 230)',
-        'fontWeight': 'bold'
+   
+    return dt.DataTable(id='datatable-interactivity',
+    data=[{}], 
+    columns=[{}], 
+    fixed_rows={'headers': True, 'data': 0},
+    style_cell_conditional=[
+        {'if': {'column_id': 'Date'},
+        'width':'100px'},
+        {'if': {'column_id': 'TMAX'},
+        'width':'100px'},
+        {'if': {'column_id': 'TMIN'},
+        'width':'100px'},
+    ],
+    style_data_conditional=[
+        {
+        'if': {'row_index': 'odd'},
+        'backgroundColor': 'rgb(248, 248, 248)'
         },
-        # editable=True,
-        # filter_action="native",
-        sort_action="native",
-        sort_mode="multi",
-        column_selectable="single",
-        selected_columns=[],
-        selected_rows=[],
-        # page_action="native",
-        page_current= 0,
-        page_size= 10,
-        )
+    ],
+    style_header={
+    'backgroundColor': 'rgb(230, 230, 230)',
+    'fontWeight': 'bold'
+    },
+    # editable=True,
+    # filter_action="native",
+    sort_action="native",
+    sort_mode="multi",
+    column_selectable="single",
+    selected_columns=[],
+    selected_rows=[],
+    # page_action="native",
+    page_current= 0,
+    page_size= 10,
+    )
 
 @app.callback(
     Output('climate-day-bar', 'figure'),
@@ -760,9 +869,8 @@ def display_climate_table(value):
     Input('product', 'value')])
 def climate_day_graph(selected_date, all_data, selected_param, selected_product):
     dr = pd.read_json(all_data)
-    dr.index = pd.to_datetime(dr.index, unit='ms')
-    # dr['Date'] = pd.to_datetime(dr['Date'], unit='ms')
-    # dr.set_index(['Date'], inplace=True)
+    dr['Date'] = pd.to_datetime(dr['Date'], unit='ms')
+    dr.set_index(['Date'], inplace=True)
     dr = dr[(dr.index.month == int(selected_date[5:7])) & (dr.index.day == int(selected_date[8:10]))]
     dr['AMAX'] = dr['TMAX'].mean()
     dr['AMIN'] = dr['TMIN'].mean()
@@ -920,6 +1028,7 @@ def display_graph(value):
         return dcc.Graph(id='frs-bar')
     elif value == 'frhm':
         return dcc.Graph(id='frs-heat')
+   
 
 @app.callback(
     Output('bar', 'children'),
@@ -940,36 +1049,41 @@ def update_figure(temp_data, rec_highs, rec_lows, norms, selected_year, period):
     previous_year = int(selected_year) - 1
     the_selected_year = selected_year
     temps = pd.read_json(temp_data)
-  
+    temps = temps.drop([0,1], axis=1)
+    temps.columns = ['date','TMAX','TMIN']
+    temps['date'] = pd.to_datetime(temps['date'], unit='ms')
+    temps = temps.set_index(['date'])
     temps['dif'] = temps['TMAX'] - temps['TMIN']
     
     temps_cy = temps[(temps.index.year==selected_year)]
     temps_py = temps[(temps.index.year==previous_year)][-31:]
- 
    
     df_record_highs_ly = pd.read_json(rec_highs)
- 
+    df_record_highs_ly = df_record_highs_ly.set_index(1)
+   
     df_record_lows_ly = pd.read_json(rec_lows)
-  
+    df_record_lows_ly = df_record_lows_ly.set_index(1)
     df_rl_cy = df_record_lows_ly[:len(temps_cy.index)]
     df_rh_cy = df_record_highs_ly[:len(temps_cy.index)]
-  
 
+    
     df_norms = pd.read_json(norms)
+    
     if int(the_selected_year) % 4 == 0:
         df_norms = df_norms
     else:
         df_norms = df_norms.drop(df_norms.index[59])
     df_norms_cy = df_norms[:len(temps_cy.index)]
     df_norms_py = df_norms[:31]
-
-    temps_cy.loc[:,'rl'] = df_rl_cy['TMIN'].values
-    temps_cy.loc[:,'rh'] = df_rh_cy['TMAX'].values
-    temps_cy.loc[:,'nh'] = df_norms_cy['DLY-TMAX-NORMAL'].values
-    temps_cy.loc[:,'nl'] = df_norms_cy['DLY-TMIN-NORMAL'].values
    
-    temps_py.loc[:,'nh'] = df_norms_py['DLY-TMAX-NORMAL'].values
-    temps_py.loc[:,'nl'] = df_norms_py['DLY-TMIN-NORMAL'].values
+  
+    temps_cy.loc[:,'rl'] = df_rl_cy[0].values
+    temps_cy.loc[:,'rh'] = df_rh_cy[0].values
+    temps_cy.loc[:,'nh'] = df_norms_cy[3].values
+    temps_cy.loc[:,'nl'] = df_norms_cy[4].values
+   
+    temps_py.loc[:,'nh'] = df_norms_py[3].values
+    temps_py.loc[:,'nl'] = df_norms_py[4].values
    
     if period == 'spring':
         temps = temps_cy[temps_cy.index.month.isin([3,4,5])]
@@ -1015,33 +1129,32 @@ def update_figure(temp_data, rec_highs, rec_lows, norms, selected_year, period):
         temp_frames = [temps_py, temps_cy]
         temps = pd.concat(temp_frames, sort=True)
         date_time = date_time[:91]  
-
-
-        df_record_highs_jan_feb = df_record_highs_ly[df_record_highs_ly.index.str.match(pat = '(1-)|(2-)')]
+        
+        df_record_highs_jan_feb = df_record_highs_ly[df_record_highs_ly.index.str.match(pat = '(01-)|(02-)')]
         df_record_highs_dec = df_record_highs_ly[df_record_highs_ly.index.str.match(pat = '(12-)')]
         high_frames = [df_record_highs_dec, df_record_highs_jan_feb]
         df_record_highs = pd.concat(high_frames)
 
-        df_record_lows_jan_feb = df_record_lows_ly[df_record_lows_ly.index.str.match(pat = '(1-)|(2-)')]
+        df_record_lows_jan_feb = df_record_lows_ly[df_record_lows_ly.index.str.match(pat = '(01-)|(02-)')]
         df_record_lows_dec = df_record_lows_ly[df_record_lows_ly.index.str.match(pat = '(12-)')]
         low_frames = [df_record_lows_dec, df_record_lows_jan_feb]
         df_record_lows = pd.concat(low_frames)
 
-        df_high_norms_jan_feb = df_norms['DLY-TMAX-NORMAL'][0:60]
-        df_high_norms_dec = df_norms['DLY-TMAX-NORMAL'][335:]
+        df_high_norms_jan_feb = df_norms[3][0:60]
+        df_high_norms_dec = df_norms[3][335:]
         high_norm_frames = [df_high_norms_dec, df_high_norms_jan_feb]
         df_high_norms = pd.concat(high_norm_frames)
 
-        df_low_norms_jan_feb = df_norms['DLY-TMIN-NORMAL'][0:60]
-        df_low_norms_dec = df_norms['DLY-TMIN-NORMAL'][335:]
+        df_low_norms_jan_feb = df_norms[4][0:60]
+        df_low_norms_dec = df_norms[4][335:]
         low_norm_frames = [df_low_norms_dec, df_low_norms_jan_feb]
         df_low_norms = pd.concat(low_norm_frames)
 
         bar_x = date_time
         nh_value = df_high_norms
         nl_value = df_low_norms
-        rh_value = df_record_highs['TMAX']
-        rl_value = df_record_lows['TMIN']
+        rh_value = df_record_highs[0]
+        rl_value = df_record_lows[0]
 
     elif period == 'annual':
         temps = temps_cy
@@ -1107,9 +1220,9 @@ def update_figure(temp_data, rec_highs, rec_lows, norms, selected_year, period):
     [Input('temps', 'children'),
     Input('product','value')])
 def display_graph_stats(temps, selected_product):
-    time.sleep(1)
     temps = pd.read_json(temps)
     temps.index = pd.to_datetime(temps.index, unit='ms')
+   
     temps = temps[np.isfinite(temps['TMAX'])]
     day_count = temps.shape[0]
     rec_highs = len(temps[temps['TMAX'] == temps['rh']])
@@ -1120,8 +1233,7 @@ def display_graph_stats(temps, selected_product):
     nl = temps['nl'].sum()
     tmax = temps['TMAX'].sum()
     tmin = temps['TMIN'].sum()
-    # nh_sum = temps['nh'][-31:].sum()
-    # nh_sum2 = temps['nh'][:60].sum()
+  
 
     degree_days = ((temps['TMAX'].sum() - temps['nh'].sum()) + (temps['TMIN'].sum() - temps['nl'].sum())) / 2
     if degree_days > 0:
@@ -1190,42 +1302,35 @@ def display_graph_stats(temps, selected_product):
              Input('period', 'value')])
 def all_temps(selected_year, period):
     previous_year = int(selected_year) - 1
+    try:
+        connection = psycopg2.connect(user = "postgres",
+                                    password = "1234",
+                                    host = "localhost",
+                                    database = "postgres")
+        cursor = connection.cursor()
 
-    temp_records = pd.read_csv('https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&dataTypes=TMAX,TMIN&stations=USW00023062&startDate=1950-01-01&endDate=' + today + '&units=standard')
-
-    temp_records['DATE'] = pd.to_datetime(temp_records['DATE'])
-    temp_records = temp_records.set_index('DATE')
-
-    # try:
-    #     connection = psycopg2.connect(user = "postgres",
-    #                                 password = "mellowyellow77",
-    #                                 host = "env-data.cvyvifniye47.us-west-1.rds.amazonaws.com",
-    #                                 database = "postgres")
-    #     cursor = connection.cursor()
-
-    #     postgreSQL_select_year_Query = 'SELECT * FROM temps WHERE EXTRACT(year FROM "DATE"::TIMESTAMP) IN ({},{}) ORDER BY "DATE" ASC'.format(selected_year, previous_year)
-    #     # postgreSQL_select_year_Query = 'SELECT * FROM temps WHERE
-    #     cursor.execute(postgreSQL_select_year_Query)
-    #     temp_records = cursor.fetchall()
-    #     df = pd.DataFrame(temp_records)
+        postgreSQL_select_year_Query = 'SELECT * FROM temps WHERE EXTRACT(year FROM "DATE"::TIMESTAMP) IN ({},{}) ORDER BY "DATE" ASC'.format(selected_year, previous_year)
+        # postgreSQL_select_year_Query = 'SELECT * FROM temps WHERE
+        cursor.execute(postgreSQL_select_year_Query)
+        temp_records = cursor.fetchall()
+        df = pd.DataFrame(temp_records)
         
-    # except (Exception, psycopg2.Error) as error :
-    #     print ("Error while fetching data from PostgreSQL", error)
+    except (Exception, psycopg2.Error) as error :
+        print ("Error while fetching data from PostgreSQL", error)
     
-    # finally:
-    #     #closing database connection.
-    #     if(connection):
-    #         cursor.close()
-    #         connection.close()
-    #         print("PostgreSQL connection is closed")
+    finally:
+        #closing database connection.
+        if(connection):
+            cursor.close()
+            connection.close()
+            print("PostgreSQL connection is closed")
 
-    return temp_records.to_json(date_format='iso')
+    return df.to_json()
 
 @app.callback(Output('norms', 'children'),
              [Input('product', 'value')])
 def norm_highs(product):
     norms = df_norms
-    print(norms)
     return norms.to_json()
 
 @app.callback(Output('rec-highs', 'children'),
@@ -1234,7 +1339,8 @@ def rec_high_temps(selected_year):
     if int(selected_year) % 4 == 0:
         rec_highs = df_rec_highs
     else:
-        rec_highs = df_rec_highs.drop(df_rec_lows.index[59])
+        rec_highs = df_rec_highs.drop(df_rec_highs.index[59])
+   
     return rec_highs.to_json()
 
 @app.callback(Output('rec-lows', 'children'),
@@ -1298,15 +1404,16 @@ def update_frs_graph(selected_product,):
 def update_frs_graph(all_data, input_value, g_l, min_max):
     
     all_data = pd.read_json(all_data)
-    all_data.index = pd.to_datetime(all_data.index, unit='ms')
-    # all_data['Date'] = pd.to_datetime(all_data['Date'], unit='ms')
-    # all_data.set_index(['Date'], inplace=True)
+    all_data['Date'] = pd.to_datetime(all_data['Date'], unit='ms')
+    all_data.set_index(['Date'], inplace=True)
+  
     if g_l == '>=':
         df = all_data.loc[all_data[min_max]>=input_value]
     else:
         df = all_data.loc[all_data[min_max]<input_value]
     df_count = df.resample('Y').count()[min_max]
     df = pd.DataFrame({'DATE':df_count.index, 'Selected Days':df_count.values})
+   
     
     data = [
         go.Bar(
@@ -1331,18 +1438,17 @@ def fyma_stuff(product):
     if product == 'fyma-graph':
         return html.Div(id='fyma-max-or-min-stats')
 
-    # return {'data': data, 'layout': layout}
+  
 
 @app.callback(
     Output('fyma-max-or-min-stats', 'children'),
     [Input('fyma-param', 'value'),
     Input('all-data', 'children')])
 def display_fyma_stats(selected_param, all_data):
-    # print(product)
+ 
     fyma_temps = pd.read_json(all_data)
-    fyma_temps.index = pd.to_datetime(fyma_temps.index, unit='ms')
-    # fyma_temps['Date'] = pd.to_datetime(fyma_temps['Date'], unit='ms')
-    # fyma_temps.set_index(['Date'], inplace=True)
+    fyma_temps['Date'] = pd.to_datetime(fyma_temps['Date'], unit='ms')
+    fyma_temps.set_index(['Date'], inplace=True)
 
     all_max_rolling = fyma_temps['TMAX'].dropna().rolling(window=1825)
     all_max_rolling_mean = all_max_rolling.mean()
@@ -1362,8 +1468,6 @@ def display_fyma_stats(selected_param, all_data):
     max_min_index = all_min_rolling_mean.idxmax().strftime('%Y-%m-%d')
     current_min = all_min_rolling_mean[-1].round(2)
   
-    # if product == 'fyma-graph':    
-        # print(type(max_index))
 
     if selected_param == 'TMAX':
 
@@ -1436,10 +1540,9 @@ def display_fyma_stats(selected_param, all_data):
     Input('all-data', 'children')])
 def update_fyma_graph(selected_param, df_5, max_trend, min_trend, all_data):
     fyma_temps = pd.read_json(all_data)
-    fyma_temps.index = pd.to_datetime(fyma_temps.index, unit='ms')
-    # fyma_temps['Date'] = pd.to_datetime(fyma_temps['Date'], unit='ms')
+    fyma_temps['Date'] = pd.to_datetime(fyma_temps['Date'], unit='ms')
     # fyma_temps['Date']=fyma_temps['Date'].dt.strftime("%Y-%m-%d") 
-    # fyma_temps.set_index(['Date'], inplace=True)
+    fyma_temps.set_index(['Date'], inplace=True)
 
     df_5 = pd.read_json(df_5)
 
@@ -1501,13 +1604,14 @@ def update_fyma_graph(selected_param, df_5, max_trend, min_trend, all_data):
 def clean_df5(all_data, product_value):
     dr = pd.read_json(all_data)
    
-    dr.index = pd.to_datetime(dr.index)
-    
-    df_date_index = df_all_temps
-  
+    dr['Date'] = pd.to_datetime(dr['Date'], unit='ms')
+   
+    df_date_index = df_all_temps.set_index(['Date'])
+
+    df_date_index.index = pd.to_datetime(df_date_index.index)
     df_ya_max = df_date_index.resample('Y').mean()
     df5 = df_ya_max[:-1]
-
+    df5 = df5.drop(['dow'], axis=1)
 
     return df5.to_json(date_format='iso')
 
@@ -1580,22 +1684,24 @@ def update_heat_map(all_data, selected_value, normals, selected_product):
     traces = []
     month_values = {'JAN':1, 'FEB':2, 'MAR':3, 'APR':4, 'MAY':5, 'JUN':6, 'JUL':7, 'AUG':8, 'SEP':9, 'OCT':10, 'NOV':11, 'DEC':12}
     all_data = pd.read_json(all_data)
-    all_data.index = pd.to_datetime(all_data.index, unit='ms')
+    all_data['Date'] = pd.to_datetime(all_data['Date'], unit='ms')
+    all_data.set_index(['Date'], inplace=True)
     all_data['TAVG'] = (all_data['TMAX'] + all_data['TMIN']) / 2
 
     new_all_data = pd.DataFrame()
     new_all_data['TMAX'] = all_data['TMAX'].resample('M').mean()
     new_all_data['TMIN'] = all_data['TMIN'].resample('M').mean()
     new_all_data['TAVG'] = all_data['TAVG'].resample('M').mean()
-   
+    # new_all_data.index.dt.strftime('%b, %Y')
     
     df_normals = pd.read_json(normals)
-    df_normals.set_index(['DATE'], inplace=True)
+    df_normals[2] = pd.to_datetime(df_normals[2], unit='ms')
+    df_normals.set_index([2], inplace=True)
 
     heat_norms = pd.DataFrame()
-    heat_norms['TMAX_AVG'] = df_normals['DLY-TMAX-NORMAL'].resample('M').mean()
-    heat_norms['TMIN_AVG'] = df_normals['DLY-TMIN-NORMAL'].resample('M').mean()
-    heat_norms['TAVG_AVG'] = df_normals['DLY-AVG-NORMAL'].resample('M').mean()
+    heat_norms['TMAX_AVG'] = df_normals[3].resample('M').mean()
+    heat_norms['TMIN_AVG'] = df_normals[4].resample('M').mean()
+    heat_norms['TAVG_AVG'] = df_normals[5].resample('M').mean()
   
     res = pd.merge(new_all_data.assign(grouper=new_all_data.index.month),
                    heat_norms.assign(grouper=heat_norms.index.month),
@@ -1643,20 +1749,22 @@ def update_heat_map(all_data, selected_value, normals, selected_product):
         )
     }
 
-# @app.callback(Output('output-data', 'children'),
-#              [Input('product', 'value')])
-# def update_data(product):
+@app.callback(Output('output-data', 'children'),
+             [Input('product', 'value')])
+def update_data(product):
 
-#     temperatures = pd.read_csv('https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&dataTypes=TMAX,TMIN&stations=USW00023062&startDate=1950-01-01&endDate=' + today + '&units=standard')
+    temperatures = pd.read_csv('https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&dataTypes=TMAX,TMIN&stations=USW00023062&startDate=' + ld + '&endDate=' + today + '&units=standard')
 
-#     most_recent_data_date = last_day - timedelta(days=1)
-#     mrd = most_recent_data_date.strftime("%Y-%m-%d")
+    # https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&dataTypes=TMAX,TMIN&stations=USW00023062&startDate=1950-01-01&endDate=2020-02-26&units=standard
 
-#     engine = create_engine('postgresql://postgres:mellowyellow77@env-data.cvyvifniye47.us-west-1.rds.amazonaws.com:5432/postgres')
-#     temperatures.to_sql('temps', engine, if_exists='append')
+    most_recent_data_date = last_day - timedelta(days=1)
+    mrd = most_recent_data_date.strftime("%Y-%m-%d")
+
+    engine = create_engine('postgresql://postgres:1234@localhost:5432/postgres')
+    temperatures.to_sql('temps', engine, if_exists='append')
 
 
-# Ice callbacks ##################################################
+# Ice callbacks ################################################################
 
 @app.callback(
     Output('stats-n-stuff', 'children'),
@@ -1702,6 +1810,16 @@ def stats_n_stuff(product):
         ],
             className='twelve columns'
         ),
+    elif product == 'moving-avg':
+        return html.Div([
+            html.Div([
+                html.Div(id='moving-avg-stats')
+            ],
+                className='twelve columns'
+            ),
+        ],
+            className='twelve columns'
+        ),
 
 @app.callback(
     Output('stats', 'children'),
@@ -1730,6 +1848,8 @@ def display_stats(value):
         ],
             className='twelve columns'
         ),
+
+     
 
 @app.callback(
     Output('daily-rankings-graph', 'figure'),
@@ -1818,7 +1938,7 @@ def daily_ranking(df_fdta, selected_sea, selected_product):
     [Input('selected-sea', 'value'),
     Input('product', 'value'),
     Input('df-fdta', 'children')])
-def record_ice_table(selected_sea, selected_value, df_fdta, max_rows=10):
+def record_ice_table(selected_sea, selected_value, df_fdta, max_rows=11):
     df_fdta = pd.read_json(df_fdta)
     
     annual_max_all = df_fdta[selected_sea].loc[df_fdta.groupby(pd.Grouper(freq='Y')).idxmax().iloc[:, 0]]
@@ -1831,12 +1951,12 @@ def record_ice_table(selected_sea, selected_value, df_fdta, max_rows=10):
                 html.Div([
                     html.Div([
                         html.Div([
-                            html.Div('{:.0f}'.format(sama.iloc[y][1]), style={'text-align': 'center'}) for y in range(0,15)
+                            html.Div('{:.0f}'.format(sama.iloc[y][1]), style={'text-align': 'center'}) for y in range(0,16)
                         ],
                             className='eight columns'
                         ),
                         html.Div([
-                            html.Div('{:,.0f}'.format(sama.iloc[y,0]), style={'text-align': 'left'}) for y in range(0,15)
+                            html.Div('{:,.0f}'.format(sama.iloc[y,0]), style={'text-align': 'left'}) for y in range(0,16)
                         ],
                             className='four columns'
                         ),  
@@ -1854,7 +1974,7 @@ def record_ice_table(selected_sea, selected_value, df_fdta, max_rows=10):
     Output('annual-min-table', 'children'),
     [Input('selected-sea', 'value'),
     Input('df-fdta', 'children')])
-def record_ice_table_a(selected_sea, df_fdta, max_rows=10):
+def record_ice_table_a(selected_sea, df_fdta, max_rows=11):
     df_fdta = pd.read_json(df_fdta)
     annual_min_all = df_fdta[selected_sea].loc[df_fdta.groupby(pd.Grouper(freq='Y')).idxmin().iloc[:, 0]]
     sorted_annual_min_all = annual_min_all.sort_values(axis=0, ascending=True)
@@ -1865,12 +1985,12 @@ def record_ice_table_a(selected_sea, df_fdta, max_rows=10):
                 html.Div([
                     html.Div([
                         html.Div([
-                            html.Div('{:.0f}'.format(sama.iloc[y][1]), style={'text-align': 'center'}) for y in range(0,15)
+                            html.Div('{:.0f}'.format(sama.iloc[y][1]), style={'text-align': 'center'}) for y in range(0,16)
                         ],
                             className='eight columns'
                         ),
                         html.Div([
-                            html.Div('{:,.0f}'.format(sama.iloc[y,0]), style={'text-align': 'left'}) for y in range(0,15)
+                            html.Div('{:,.0f}'.format(sama.iloc[y,0]), style={'text-align': 'left'}) for y in range(0,16)
                         ],
                             className='four columns'
                         ),  
@@ -1894,7 +2014,7 @@ def annual_ranking(selected_product):
 
         x = 0
 
-        rankings = [['2006', 0],['2007', 0],['2008', 0],['2009', 0],['2010', 0],['2011', 0],['2012', 0],['2013', 0],['2014', 0],['2015', 0],['2016', 0],['2017', 0],['2018', 0],['2019', 0],['2020', 0]]
+        rankings = [['2006', 0],['2007', 0],['2008', 0],['2009', 0],['2010', 0],['2011', 0],['2012', 0],['2013', 0],['2014', 0],['2015', 0],['2016', 0],['2017', 0],['2018', 0],['2019', 0],['2020', 0],['2021', 0]]
         rank = pd.DataFrame(rankings, columns = ['Year','Pts'])
     
         while x < 366:
@@ -1922,12 +2042,12 @@ def annual_ranking(selected_product):
                 html.Div([
                     html.Div([
                         html.Div([
-                            html.Div('{}'.format(sorted_rank.iloc[y][0]), style={'text-align': 'center'}) for y in range(0,15)
+                            html.Div('{}'.format(sorted_rank.iloc[y][0]), style={'text-align': 'center'}) for y in range(0,16)
                         ],
                             className='eight columns'
                         ),
                         html.Div([
-                            html.Div('{:,}'.format(sorted_rank.iloc[y,1]), style={'text-align': 'left'}) for y in range(0,15)
+                            html.Div('{:,}'.format(sorted_rank.iloc[y,1]), style={'text-align': 'left'}) for y in range(0,16)
                         ],
                             className='four columns'
                         ),  
@@ -1946,7 +2066,7 @@ def annual_ranking(selected_product):
     [Input('product', 'value')])
 def clean_fdta(selected_product):
     df_fdta = df.rolling(window=5).mean()
-    if selected_product == 'years-graph' or selected_product == 'extent-stats' or selected_product == 'extent-date':
+    if selected_product == 'years-graph' or selected_product == 'extent-stats' or selected_product == 'extent-date' or selected_product == 'moving-avg':
         return df_fdta.to_json()
 
 @app.callback(
@@ -2009,7 +2129,7 @@ def display_year_selector(product_value):
     Output('sea-selector', 'children'),
     [Input('product', 'value')])
 def display_sea_selector(product_value):
-    if product_value == 'years-graph' or product_value == 'extent-date' or product_value == 'extent-stats':
+    if product_value == 'years-graph' or product_value == 'extent-date' or product_value == 'extent-stats' or product_value == 'moving-avg':
         return html.P('Select Sea', style={'text-align': 'center'}) , html.Div([
             dcc.Dropdown(
                 id='selected-sea',
@@ -2045,6 +2165,8 @@ def display_graph(value):
         return dcc.Graph(id='monthly-bar')
     elif value == 'extent-date':
         return dcc.Graph(id='daily-rankings-graph')
+    elif value == 'moving-avg':
+        return dcc.Graph(id='moving-avg-graph')
 
 @app.callback(
     Output('current-stats', 'children'),
@@ -2061,7 +2183,7 @@ def update_current_stats(selected_sea, selected_product, df_fdta):
     weekly_change = today_value - week_ago_value
     record_min = df_fdta[selected_sea].min()
     record_min_difference = today_value - record_min
-    record_low_max = sorted_annual_max_all[0]
+    record_low_max = sorted_annual_max_all[-1]
     record_max_difference = today_value - record_low_max
   
     if selected_product == 'years-graph':
@@ -2126,8 +2248,7 @@ def update_current_stats(selected_sea, selected_product, df_fdta):
 def update_figure(selected_sea, selected_year, df_fdta):
     traces = []
     df_fdta = pd.read_json(df_fdta)
-    # print(df_fdta)
-    # selected_years = [selected_year1,selected_year2,selected_year3,selected_year4]
+   
     for x in selected_year:
         sorted_daily_values=df_fdta[df_fdta.index.year == x]
         traces.append(go.Scatter(
@@ -2144,6 +2265,51 @@ def update_figure(selected_sea, selected_year, df_fdta):
                 hovermode='closest',
                 )  
     }
+
+@app.callback(
+    Output('moving-avg-graph', 'figure'),
+    [Input('product', 'value'),
+    Input('selected-sea', 'value'),
+    Input('df-year-trailing-avg', 'children')])
+def update_figure_d(selected_product, selected_sea, df_yta):
+    df_yta = pd.read_json(df_yta)
+    df_yta.index = df_yta.index.strftime("%Y-%m-%d")
+   
+    trace = [
+        go.Scatter(
+            y = df_yta[selected_sea],
+            x = df_yta.index,
+            name='1 Year Moving Avg'
+        ),
+    ]
+    layout = go.Layout(
+        xaxis = {'rangeslider': {'visible':True},},
+        yaxis = {"title": 'Ice Extent (km2'},
+        title ='1 Year Rolling Avg {}'.format(selected_sea),
+        plot_bgcolor = 'lightgray',
+        height = 500,
+    )
+    return {'data': trace, 'layout': layout}
+
+
+
+@app.callback(
+    Output('df-year-trailing-avg', 'children'),
+    [Input('product', 'value'),
+    Input('selected-sea', 'value'),
+    Input('df-fdta', 'children')])
+def update_figure_d(selected_product, selected_sea, df_fdta):
+    if selected_product == 'moving-avg':
+        df = pd.read_json(df_fdta)
+      
+        df_year_rolling = df[selected_sea].rolling(window=365)
+        df_year_rolling_mean = df_year_rolling.mean()
+        
+        df_year_rolling_mean = df_year_rolling_mean.to_frame()
+       
+    return df_year_rolling_mean.to_json(date_format='iso')
+
+
 
 @app.callback([
     Output('monthly-bar', 'figure'),
@@ -2187,4 +2353,4 @@ def update_figure_c(month_value):
   
 
 if __name__ == '__main__':
-    application.run(debug=False, port=8080)
+    app.run_server(port=8080, debug=False)
