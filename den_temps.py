@@ -19,6 +19,8 @@ year_count = current_year-startyr
 
 # print(df_all_temps)
 
+df_norms = pd.read_csv('normals.csv')
+
 df_all_temps = pd.read_csv('https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&dataTypes=TMAX,TMIN&stations=USW00023062&startDate=1950-01-01&endDate=2021-03-10&units=standard')
 
 df_all_temps['DATE'] = pd.to_datetime(df_all_temps['DATE'])
