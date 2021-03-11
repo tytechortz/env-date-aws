@@ -21,7 +21,7 @@ import csv
 import requests
 
 app = dash.Dash()
-application = app.server
+# application = app.server
 
 
 pd.set_option('display.max_rows', None)
