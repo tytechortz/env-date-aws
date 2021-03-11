@@ -21,7 +21,7 @@ import csv
 import requests
 
 app = dash.Dash()
-# application = app.server
+application = app.server
 
 
 pd.set_option('display.max_rows', None)
@@ -2293,4 +2293,4 @@ def update_figure_c(month_value):
   
 
 if __name__ == '__main__':
-    app.run_server(port=8000, debug=False)
+    app.run_server(port=8081, debug=False)
