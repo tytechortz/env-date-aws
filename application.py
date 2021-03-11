@@ -2293,4 +2293,4 @@ def update_figure_c(month_value):
   
 
 if __name__ == '__main__':
-    app.run_server(port=8081, debug=False)
+    app.run_server(hoost=127.0.0.1, port=8000, debug=False)
