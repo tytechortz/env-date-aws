@@ -1361,16 +1361,15 @@ def update_frs_graph(selected_product,):
 def update_frs_graph(all_data, input_value, g_l, min_max):
     
     all_data = pd.read_json(all_data)
-    all_data['Date'] = pd.to_datetime(all_data['Date'], unit='ms')
-    all_data.set_index(['Date'], inplace=True)
-  
+    all_data.index = pd.to_datetime(all_data.index, unit='ms')
+    # all_data['Date'] = pd.to_datetime(all_data['Date'], unit='ms')
+    # all_data.set_index(['Date'], inplace=True)
     if g_l == '>=':
         df = all_data.loc[all_data[min_max]>=input_value]
     else:
         df = all_data.loc[all_data[min_max]<input_value]
     df_count = df.resample('Y').count()[min_max]
     df = pd.DataFrame({'DATE':df_count.index, 'Selected Days':df_count.values})
-   
     
     data = [
         go.Bar(
