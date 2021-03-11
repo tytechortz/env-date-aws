@@ -635,18 +635,24 @@ def lake_graph(lake, powell_data, mead_data, combo_data):
 
 
 # Temperature callbacks ################################
-
 @app.callback(Output('all-data', 'children'),
             [Input('product', 'value')])
 def all_temps_cleaner(product_value):
-  
     cleaned_all_temps = df_all_temps
-  
-    cleaned_all_temps.columns=['dow','sta','Date','TMAX','TMIN']
-    
-    cleaned_all_temps = cleaned_all_temps.drop(['dow','sta'], axis=1)
+    print(cleaned_all_temps)
 
     return cleaned_all_temps.to_json()
+# @app.callback(Output('all-data', 'children'),
+#             [Input('product', 'value')])
+# def all_temps_cleaner(product_value):
+  
+#     cleaned_all_temps = df_all_temps
+  
+#     cleaned_all_temps.columns=['dow','sta','Date','TMAX','TMIN']
+    
+#     cleaned_all_temps = cleaned_all_temps.drop(['dow','sta'], axis=1)
+
+#     return cleaned_all_temps.to_json()
 
 @app.callback(
     Output('date-picker', 'children'),
@@ -1735,9 +1741,11 @@ def display_fyma_stats(selected_param, all_data):
     Input('all-data', 'children')])
 def update_fyma_graph(selected_param, df_5, max_trend, min_trend, all_data):
     fyma_temps = pd.read_json(all_data)
-    fyma_temps['Date'] = pd.to_datetime(fyma_temps['Date'], unit='ms')
+    fyma_temps.index = pd.to_datetime(fyma_temps.index, unit='ms')
+
+    # fyma_temps = pd.to_datetime(fyma_temps['Date'], unit='ms')
     # fyma_temps['Date']=fyma_temps['Date'].dt.strftime("%Y-%m-%d") 
-    fyma_temps.set_index(['Date'], inplace=True)
+    # fyma_temps.set_index(['Date'], inplace=True)
 
     df_5 = pd.read_json(df_5)
 
