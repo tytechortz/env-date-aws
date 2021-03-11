@@ -20,6 +20,10 @@ import time
 import csv 
 import requests
 
+app = dash.Dash()
+application = app.server
+
+
 pd.set_option('display.max_rows', None)
 
 pd.set_option('display.max_rows', None)
@@ -28,8 +32,6 @@ today = time.strftime("%Y-%m-%d")
 yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
 two_days_ago = datetime.strftime(datetime.now() - timedelta(2), '%Y-%m-%d')
 
-app = dash.Dash()
-application = app.server
 
 
 app.config.suppress_callback_exceptions = True
