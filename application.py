@@ -847,8 +847,9 @@ def display_climate_table(value):
     Input('product', 'value')])
 def climate_day_graph(selected_date, all_data, selected_param, selected_product):
     dr = pd.read_json(all_data)
-    dr['Date'] = pd.to_datetime(dr['Date'], unit='ms')
-    dr.set_index(['Date'], inplace=True)
+    dr.index = pd.to_datetime(dr.index, unit='ms')
+    # dr['Date'] = pd.to_datetime(dr['Date'], unit='ms')
+    # dr.set_index(['Date'], inplace=True)
     dr = dr[(dr.index.month == int(selected_date[5:7])) & (dr.index.day == int(selected_date[8:10]))]
     dr['AMAX'] = dr['TMAX'].mean()
     dr['AMIN'] = dr['TMIN'].mean()
