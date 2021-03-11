@@ -1648,8 +1648,9 @@ def fyma_stuff(product):
 def display_fyma_stats(selected_param, all_data):
  
     fyma_temps = pd.read_json(all_data)
-    fyma_temps['Date'] = pd.to_datetime(fyma_temps['Date'], unit='ms')
-    fyma_temps.set_index(['Date'], inplace=True)
+    fyma_temps.index = pd.to_datetime(fyma_temps.index, unit='ms')
+    # fyma_temps['Date'] = pd.to_datetime(fyma_temps['Date'], unit='ms')
+    # fyma_temps.set_index(['Date'], inplace=True)
 
     all_max_rolling = fyma_temps['TMAX'].dropna().rolling(window=1825)
     all_max_rolling_mean = all_max_rolling.mean()
