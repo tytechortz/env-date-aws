@@ -13,8 +13,6 @@ import pandas as pd
 import numpy as np
 from numpy import arange,array,ones
 from scipy import stats
-import psycopg2
-from sqlalchemy import create_engine
 from datetime import datetime, date, timedelta
 import time
 import csv 
