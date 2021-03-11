@@ -1637,24 +1637,22 @@ def update_heat_map(all_data, selected_value, normals, selected_product):
     traces = []
     month_values = {'JAN':1, 'FEB':2, 'MAR':3, 'APR':4, 'MAY':5, 'JUN':6, 'JUL':7, 'AUG':8, 'SEP':9, 'OCT':10, 'NOV':11, 'DEC':12}
     all_data = pd.read_json(all_data)
-    all_data['Date'] = pd.to_datetime(all_data['Date'], unit='ms')
-    all_data.set_index(['Date'], inplace=True)
+    all_data.index = pd.to_datetime(all_data.index, unit='ms')
     all_data['TAVG'] = (all_data['TMAX'] + all_data['TMIN']) / 2
 
     new_all_data = pd.DataFrame()
     new_all_data['TMAX'] = all_data['TMAX'].resample('M').mean()
     new_all_data['TMIN'] = all_data['TMIN'].resample('M').mean()
     new_all_data['TAVG'] = all_data['TAVG'].resample('M').mean()
-    # new_all_data.index.dt.strftime('%b, %Y')
+   
     
     df_normals = pd.read_json(normals)
-    df_normals[2] = pd.to_datetime(df_normals[2], unit='ms')
-    df_normals.set_index([2], inplace=True)
+    df_normals.set_index(['DATE'], inplace=True)
 
     heat_norms = pd.DataFrame()
-    heat_norms['TMAX_AVG'] = df_normals[3].resample('M').mean()
-    heat_norms['TMIN_AVG'] = df_normals[4].resample('M').mean()
-    heat_norms['TAVG_AVG'] = df_normals[5].resample('M').mean()
+    heat_norms['TMAX_AVG'] = df_normals['DLY-TMAX-NORMAL'].resample('M').mean()
+    heat_norms['TMIN_AVG'] = df_normals['DLY-TMIN-NORMAL'].resample('M').mean()
+    heat_norms['TAVG_AVG'] = df_normals['DLY-AVG-NORMAL'].resample('M').mean()
   
     res = pd.merge(new_all_data.assign(grouper=new_all_data.index.month),
                    heat_norms.assign(grouper=heat_norms.index.month),
