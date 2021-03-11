@@ -1,10 +1,8 @@
 import dash
 import dash_html_components as html
 import dash_core_components as dcc
-# from connect import norm_records, rec_lows, rec_highs, all_temps
 from datetime import datetime, date, timedelta
 import time
-# from connect import all_temps
 import pandas as pd
 
 app = dash.Dash(__name__)
@@ -15,9 +13,7 @@ today = time.strftime("%Y-%m-%d")
 startyr = 1950
 year_count = current_year-startyr
 
-# df_all_temps = pd.DataFrame(all_temps,columns=['dow','sta','Date','TMAX','TMIN'])
 
-# print(df_all_temps)
 
 df_norms = pd.read_csv('normals.csv')
 
